@@ -69,10 +69,10 @@ class Lib3gkTools {
 	 * @access public
 	 * @static
 	 */
-	function &get_instance(){
+	static function get_instance(){
 		static $instance = array();
 		if(!$instance){
-			$instance[0] =& new Lib3gkTools();
+			$instance[0] = new Lib3gkTools();
 			$instance[0]->initialize();
 		}
 		return $instance[0];

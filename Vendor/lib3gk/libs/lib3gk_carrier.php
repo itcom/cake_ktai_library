@@ -93,7 +93,7 @@ class Lib3gkCarrier {
 	 * @access public
 	 * @static
 	 */
-	function &get_instance(){
+	static function get_instance(){
 		static $instance = array();
 		if(!$instance){
 			$instance[0] =& new Lib3gkCarrier();

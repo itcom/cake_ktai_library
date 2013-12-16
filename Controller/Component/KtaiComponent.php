@@ -88,7 +88,7 @@ class KtaiComponent extends Component {
 	 * @return (なし)
 	 * @access public
 	 */
-	function initialize(&$controller){
+	function initialize(Controller $controller){
 		
 		$this->_controller = &$controller;
 		
@@ -135,7 +135,7 @@ class KtaiComponent extends Component {
 	 * @return (なし)
 	 * @access public
 	 */
-	function beforeRender(&$controller){
+	function beforeRender(Controller $controller){
 		if(isset($controller->ktai)){
 			Configure::write('Ktai', $this->_options);
 		}
@@ -152,7 +152,7 @@ class KtaiComponent extends Component {
 	 * @return (なし)
 	 * @access public
 	 */
-	function shutdown(&$controller){
+	function shutdown(Controller $controller){
 		
 		//自動変換処理
 		//requestAction()からのコールの場合は以下処理をスキップする
