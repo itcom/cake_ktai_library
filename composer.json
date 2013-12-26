@@ -1,0 +1,25 @@
+{
+  "name" : "nanapi/cake_ktai_library",
+  "type": "cakephp-plugin",
+  "description": "Cake Ktai Plugin for CakePHP",
+  "keywords": [
+    "cakephp",
+    "plugin",
+    "KtaiPlugin"
+  ],
+  "homepage": "https://github.com/MASA-P/cake_ktai_library",
+  "license": "GNU",
+  "authors": [
+    {
+      "name": "Shuichi Wada",
+      "email": "shuichi.wada@nanapi.co.jp"
+    }
+  ],
+  "require": {
+    "php": ">=5.5.0",
+    "composer/installers": "~1.0"
+  },
+  "extra": {
+    "installer-name": "CakeKtaiLibrary"
+  }
+}
