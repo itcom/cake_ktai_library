@@ -1,5 +1,6 @@
 {
     "name": "shota/cake_ktai_library",
+    "type": "cakephp-plugin",
     "require": {
         "php": ">=5.3.0",
         "composer/installers": "*"
