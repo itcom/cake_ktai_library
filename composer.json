@@ -1,5 +1,5 @@
 {
-  "name" : "nanapi/cake_ktai_library",
+  "name" : "itcom/cake_ktai_library",
   "type": "cakephp-plugin",
   "description": "Cake Ktai Plugin for CakePHP",
   "keywords": [
@@ -11,8 +11,8 @@
   "license": "GNU",
   "authors": [
     {
-      "name": "Shuichi Wada",
-      "email": "shuichi.wada@nanapi.co.jp"
+      "name": "Atsuji Okuyama",
+      "email": "okuyama@workgroup.jp"
     }
   ],
   "require": {
