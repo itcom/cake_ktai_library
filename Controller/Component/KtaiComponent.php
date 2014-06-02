@@ -6,7 +6,7 @@
  *
  * PHP versions 5
  *
- * CakeKtaiLibrary for CakePHP1.3
+ * CakeKtaiLibrary for CakePHP2.x
  * Copyright 2009-2012, ECWorks.
  
  * Licensed under The GNU General Public Licence
@@ -27,31 +27,31 @@ if(!class_exists('lib3gk')){
 }
 
 /**
- * Ktai helper class for CakePHP
+ * Ktai component class for CakePHP
  *
  * @package       KtaiLibrary
- * @subpackage    KtaiLibrary.app.views.helpers
+ * @subpackage    KtaiLibrary.app.controllers.components
  */
-class KtaiHelper extends Helper {
+class KtaiComponent extends Component {
 	
 	//================================================================
 	//Properties
 	//================================================================
 	/**
-	 * 他のヘルパー
-	 *
-	 * @var array
-	 * @access public
-	 */
-	var $helpers = array('Html');
-	
-	/**
 	 * Lib3gkのインスタンス
 	 *
-	 * @var array
-	 * @access public
+	 * @var object
+	 * @access protected
 	 */
 	var $_lib3gk = null;
+	
+	/**
+	 * コントローラのインスタンス
+	 *
+	 * @var object
+	 * @access protected
+	 */
+	var $_controller = null;
 	
 	/**
 	 * Ktai Libraryパラメータ
@@ -59,9 +59,21 @@ class KtaiHelper extends Helper {
 	 * @var array
 	 * @access protected
 	 */
-	var $options = array(
+	var $_options = array(
+		'enable_ktai_session' => true, 
+		'use_redirect_session_id' => false, 
+		'imode_session_name' => 'csid', 
+		'session_save' => 'php', 
+		
+		'output_auto_encoding' => false, 
+		'output_auto_convert_emoji' => false, 
+		'output_convert_kana' => false, 
+		
 		'img_emoji_url' => "/img/emoticons/", 
+		
+		'use_xml' => false, 
 	);
+	
 	
 	//================================================================
 	//Methods
@@ -70,28 +82,114 @@ class KtaiHelper extends Helper {
 	//Basics
 	//------------------------------------------------
 	/**
-	 * beforeRenderコールバック
+	 * initializeコールバック
 	 *
+	 * @param $controller object& コントローラのインスタンス
 	 * @return (なし)
 	 * @access public
 	 */
-	function beforeRender(){
+	function initialize(Controller $controller){
 		
-		parent::beforeRender();
+		$this->_controller = &$controller;
 		
-		$this->options['input_encoding'] = Configure::read('App.encoding');
-		$this->options['output_encoding'] = Configure::read('App.encoding');
+		$this->_options['input_encoding'] = 
+		$this->_options['output_encoding'] = Configure::read('App.encoding');
 		
 		$this->_lib3gk = Lib3gk::get_instance();
 		$this->_lib3gk->_url_callback = array($this, 'url_callback_func');
-		$this->_lib3gk->_params = array_merge($this->_lib3gk->_params, $this->options);
-		
-		$params = Configure::read('Ktai');
-		if(!empty($params)){
-			$this->_lib3gk->_params = array_merge($this->_lib3gk->_params, $params);
+		$this->_lib3gk->_params = array_merge($this->_lib3gk->_params, $this->_options);
+		$this->_options =& $this->_lib3gk->_params;
+		if(isset($controller->ktai)){
+			$this->_lib3gk->_params = array_merge($this->_lib3gk->_params, $controller->ktai);
+			$controller->ktai = &$this->_lib3gk->_params;
 		}
-		$this->options = &$this->_lib3gk->_params;
+		if($this->_options['enable_ktai_session']){
+			$this->_options['session_save'] = Configure::read('Session');
+
+			$params = array(
+				'defaults' => Configure::read('Session.defaults'),
+				'checkAgent' => false,
+			);
+			if($this->_lib3gk->is_imode()){
+				$params['cookie'] = $this->_lib3gk->_params['imode_session_name'];
+				$params['ini'] = array(
+					'session.use_trans_sid' => 1,
+					'session.use_only_cookies' => 0,
+					'url_rewriter.tags' => 'a=href,area=href,frame=src,input=src,form=fakeentry,fieldset=',
+				);
+
+				if(Configure::read('Security.level') == 'high'){
+					Configure::write('Security.level', 'medium');
+				}
+			}
+			Configure::write('Session', $params);
+		}
+
 	}
+	
+	
+	/**
+	 * beforeRenderコールバック
+	 *
+	 * @param $controller object& コントローラのインスタンス
+	 * @return (なし)
+	 * @access public
+	 */
+	function beforeRender(Controller $controller){
+		if(isset($controller->ktai)){
+			Configure::write('Ktai', $this->_options);
+		}
+		if($this->_options['use_xml'] && $this->is_imode() && Configure::read('debug') == 0){
+			header('Content-type: application/xhtml+xml');
+		}
+	}
+	
+	
+	/**
+	 * shutdownコールバック
+	 *
+	 * @param $controller object& コントローラのインスタンス
+	 * @return (なし)
+	 * @access public
+	 */
+	function shutdown(Controller $controller){
+		
+		//自動変換処理
+		//requestAction()からのコールの場合は以下処理をスキップする
+		//
+		if (!isset($controller->params['requested']) || $controller->params['requested'] !== 1) {
+			$out = $controller->response->body();
+			
+			$input_encoding  = $this->_options['input_encoding'];
+			$output_encoding = $this->_options['output_encoding'];
+			
+			if($this->_options['output_convert_kana'] != false){
+				$out = mb_convert_kana(
+					$out, 
+					$this->_options['output_convert_kana'], 
+					$input_encoding
+				);
+			}
+			
+			if($this->_options['output_auto_convert_emoji']){
+				$this->convert_emoji($out);
+			}else{
+				if($this->_options['output_auto_encoding'] && 
+					($input_encoding != $output_encoding)){
+					$out = mb_convert_encoding(
+						$out, 
+						$output_encoding, 
+						$input_encoding
+					);
+				}
+			}
+			
+			$controller->response->body($out);
+		}
+	
+		$this->_lib3gk->shutdown();
+	}
+	
 	
 	//------------------------------------------------
 	//Ktai Library methods
@@ -107,118 +205,10 @@ class KtaiHelper extends Helper {
 		return Router::url($url);
 	}
 	
-	/**
-	 * imageタグ付きの文字列を入手
-	 * 詳しくはLib3gkHtml::image()を参照
-	 *
-	 * @param $url mixed URL
-	 * @param $htmlAttribute array HTMLアトリビュート
-	 * @param $stretch boolean trueで画像サイズをストレッチ
-	 * @return string 生成されたHTMLタグ
-	 * @access public
-	 */
-	function image($path, $htmlAttributes = array()){
-		
-		if(isset($htmlAttributes['width']) && isset($htmlAttributes['height'])){
-			$arr = $this->_lib3gk->stretch_image_size($htmlAttributes['width'], $htmlAttributes['height']);
-			$htmlAttributes['width']  = $arr[0];
-			$htmlAttributes['height'] = $arr[1];
-		}
-		
-		return $this->Html->image($path, $htmlAttributes);
-	}
-	
-	/**
-	 * CakePHP形式のリンク生成
-	 *
-	 * @param $title string リンクのタイトルテキスト
-	 * @param $url mixed URL
-	 * @param $options array オプション。下記オプションまたはCake準拠のオプション値
-	 * @param $confirmMessage string 確認ダイアログ用のメッセージ(falseで表示しない)
-	 * @param $escapeTitle boolean タイトルをエスケープしたくない場合はfalse
-	 * @return string 生成されたHTMLタグ
-	 * @access public
-	 *
-	 * ※$optionsの値は基本的にCakePHP準拠ですが、次の値を拡張しています
-	 *   'accesskey' 0～9を指定することで先頭に絵文字を挿入します
-	 *   'carrier' キャリアを指定できます
-	 *   'output_encoding' 出力エンコーディングを指定できます
-	 *   'binary' バイナリ絵文字出力のON/OFF指定ができます
-	 *
-	 */
-	function link($title, $url = null, $options = array(), $confirmMessage = false, $escapeTitle = true){
-		
-		$str = '';
-		
-		$carrier = null;
-		if(isset($options['carrier'])){
-			$carrier = $options['carrier'];
-			unset($options['carrier']);
-		}
-		
-		$binary = true;
-		if(isset($options['binary'])){
-			$binary = $options['binary'];
-			unset($options['binary']);
-		}
-		
-		$input_encoding = $this->options['input_encoding'];
-		if(isset($options['input_encoding'])){
-			$input_encoding = $options['input_encoding'];
-			unset($options['input_encoding']);
-		}
-		$input_encoding = $this->_lib3gk->normal_encoding_str($input_encoding);
-		
-		$output_encoding = $this->options['output_encoding'];
-		if(isset($options['output_encoding'])){
-			$output_encoding = $options['output_encoding'];
-			unset($options['output_encoding']);
-		}
-		$output_encoding = $this->_lib3gk->normal_encoding_str($output_encoding);
-		
-		if(isset($options['accesskey'])){
-			if(is_numeric($options['accesskey'])){
-				$accesskey = intval($options['accesskey']);
-				if($accesskey >= 0 && $accesskey < 10){
-					if($accesskey == 0){
-						$accesskey += 10;
-					}
-					if($output_encoding == KTAI_ENCODING_UTF8){
-						$default_code = 0xe6e1;
-					}else{
-						$default_code = 0xf986;
-					}
-					if($this->options['output_auto_encoding'] && $input_encoding != $output_encoding){
-						$binary = false;
-					}
-					$str = $this->emoji($accesskey + $default_code, false, $carrier, $output_encoding, $binary);
-				}
-			}
-		}
-		
-		return $str.$this->Html->link($title, $url, $options, $confirmMessage, $escapeTitle);
-	}
-	
-	/**
-	 * mailtoリンクの作成
-	 * 詳しくはLib3gkTools::mailto()を参照
-	 *
-	 * @param $title string リンクのタイトル文字列
-	 * @param $email string 宛先メールアドレス
-	 * @param $subject string メールの題名
-	 * @param $body string 本文
-	 * @param $input_encoding integer 入力文字エンコーディングコード
-	 * @param $output_encoding integer 出力文字エンコーディングコード
-	 * @param $display boolean trueでecho出力(デフォルト)
-	 * @return string aタグ付きのmailto文字列
-	 * @access public
-	 */
-	function mailto($title, $email, $subject = null, $body = null, $input_encoding = null, $output_encoding = null, $display = true){
-		return $this->_lib3gk->mailto($title, $email, $subject, $body, $input_encoding, $output_encoding, $display);
-	}
 	
 	/**
 	 * バージョンの入手
+	 * 詳しくはLib3gk::get_version()を参照
 	 *
 	 * @return string バージョン番号
 	 * @access public
@@ -226,6 +216,7 @@ class KtaiHelper extends Helper {
 	function get_version(){
 		return $this->_lib3gk->get_version();
 	}
+	
 	
 	/**
 	 * ユーザエージェントの解析
@@ -517,7 +508,7 @@ class KtaiHelper extends Helper {
 	 * @return string 絵文字(バイナリ・数値文字参照・imageタグ)
 	 * @access public
 	 */
-	function emoji($code, $disp = true, $carrier = null, $output_encoding = null, $binary = null){
+	function emoji($code, $disp = true, $carrier = null, $input_encoding = null, $output_encoding = null, $binary = null){
 		return $this->_lib3gk->emoji($code, $disp, $carrier, $output_encoding, $binary);
 	}
 	
@@ -553,36 +544,6 @@ class KtaiHelper extends Helper {
 		return $this->_lib3gk->get_machineinfo($carrier, $name);
 	}
 	
-	/**
-	 * QRコードの生成(Google chart APIの利用)
-	 * 詳しくはLib3gkHtml::get_qrcode()を参照
-	 *
-	 * @param $str string QRコード内に含める文字列(URLなど)
-	 * @param $options array APIに与えるオプション
-	 * @param $input_encoding integer 入力文字エンコーディングコード
-	 * @param $output_encoding integer 出力文字エンコーディングコード
-	 * @return string imageタグ付き文字列
-	 * @access public
-	 */
-	function get_qrcode($str, $options = array(), $input_encoding = null, $output_encoding = null){
-		return $this->_lib3gk->get_qrcode($str, $options, $input_encoding, $output_encoding);
-	}
-	
-	/**
-	 * Google static Maps APIを用いて地図表示
-	 * 詳しくはLib3gkHtml::get_static_maps()を参照
-	 *
-	 * @param $lat string 緯度
-	 * @param $lon string 経度
-	 * @param $options array APIに与えるオプション
-	 * @param $apikey string 取得したGoogle API キー
-	 * @return string imageタグ付き文字列
-	 * @access public
-	 */
-	function get_static_maps($lat, $lon, $options = array(), $api_key = null){
-		return $this->_lib3gk->get_static_maps($lat, $lon, $options, $api_key);
-	}
-	
 	
 	/**
 	 * 端末UIDの入手
@@ -595,44 +556,5 @@ class KtaiHelper extends Helper {
 		return $this->_lib3gk->get_uid();
 	}
 	
-	/**
-	 * 登録スタイルの呼び出し
-	 * 詳しくはLib3gkHtml::style()を参照
-	 *
-	 * @param $name string 登録スタイル名
-	 * @param $display boolean trueでechoもする(デフォルト)
-	 * @return string 入手したインラインスタイルシート文字列
-	 * @access public
-	 */
-	function style($name, $display = true){
-		return $this->_lib3gk->style($name, $display);
-	}
-	
-	/**
-	 * 機種に最適のフォント指定を行う
-	 * 詳しくはLib3gkHtml::font()を参照
-	 *
-	 * @param $size string フォントのサイズ(small/medium/large)
-	 * @param $tag string カスタムで使用するタグ(div, span, fontなど)
-	 * @param $style string 付加するスタイル名。$ktai->style()で指定する値
-	 * @param $display boolean trueでechoを自動で行う
-	 * @return string フォント指定タグ
-	 * @access public
-	 */
-	function font($size = null, $tag = null, $style = null, $display = true){
-		return $this->_lib3gk->font($size, $tag, $style, $display);
-	}
-	
-	/**
-	 * font()で生成したタグの閉じタグを生成
-	 * 詳しくはLib3gkHtml::fontend()を参照
-	 *
-	 * @param $display boolean trueでechoを自動で行う
-	 * @return string フォント指定タグの閉じタグ
-	 * @access public
-	 */
-	function fontend($display = true){
-		return $this->_lib3gk->fontend($display);
-	}
 	
 }
